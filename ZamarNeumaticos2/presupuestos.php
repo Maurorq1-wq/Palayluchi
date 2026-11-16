@@ -135,7 +135,20 @@ if (isset($_GET["estado"]) && isset($_GET["id"])) {
 
 // Datos para los selects
 $clientes = $pdo->query("SELECT * FROM clientes ORDER BY apellido, nombre")->fetchAll();
-$neumaticos = $pdo->query("SELECT * FROM neumaticos ORDER BY marca, modelo")->fetchAll();
+
+$buscar = trim($_GET["buscar"] ?? "");
+
+if ($buscar != "") {
+    $stmtNeu = $pdo->prepare(
+        "SELECT * FROM neumaticos 
+         WHERE marca LIKE :buscar OR modelo LIKE :buscar OR medida LIKE :buscar 
+         ORDER BY marca, modelo"
+    );
+    $stmtNeu->execute(["buscar" => "%$buscar%"]);
+    $neumaticos = $stmtNeu->fetchAll();
+} else {
+    $neumaticos = $pdo->query("SELECT * FROM neumaticos ORDER BY marca, modelo")->fetchAll();
+}
 
 $carrito = $_SESSION["carrito_presupuesto"];
 $total_carrito = array_sum(array_column($carrito, "subtotal"));
@@ -204,7 +217,7 @@ $historial_presupuestos = $pdo->query(
             <?php } ?>
 
 
-            <?php if (count($neumaticos) === 0) { ?>
+            <?php if (count($neumaticos) === 0 && $buscar === "") { ?>
 
                 <div class="tarjeta">
                     <div class="panel-vacio">
@@ -221,34 +234,62 @@ $historial_presupuestos = $pdo->query(
                         AGREGAR NEUMÁTICO AL PRESUPUESTO
                     </div>
 
-                    <form method="POST" class="formulario-stock">
-
-                        <input type="hidden" name="accion" value="agregar_linea">
-
-                        <div>
-                            <label>NEUMÁTICO</label>
-                            <select name="neumatico_id" required>
-                                <?php foreach ($neumaticos as $n) { ?>
-                                    <option value="<?php echo $n["id"]; ?>">
-                                        <?php echo htmlspecialchars($n["marca"] . " " . $n["modelo"] . " (" . $n["medida"] . ")"); ?>
-                                    </option>
-                                <?php } ?>
-                            </select>
-                        </div>
+                    <!-- BUSCADOR DE NEUMÁTICOS -->
+                    <form method="GET" class="formulario-stock" style="margin-bottom: 18px;">
 
                         <div>
-                            <label>CANTIDAD</label>
-                            <input type="number" name="cantidad" min="1" required>
+                            <label>BUSCAR NEUMÁTICO</label>
+                            <input type="text" name="buscar" placeholder="Marca, modelo o medida..." value="<?php echo htmlspecialchars($buscar); ?>">
                         </div>
 
-                        <div>
-                            <label>PRECIO UNITARIO</label>
-                            <input type="number" name="precio_unitario" step="0.01" min="0" required>
-                        </div>
+                        <button type="submit">BUSCAR</button>
 
-                        <button type="submit">AGREGAR AL PRESUPUESTO</button>
+                        <?php if ($buscar != "") { ?>
+                            <a href="presupuestos.php" class="accion-eliminar" style="align-self: end; padding-bottom: 10px;">
+                                Limpiar búsqueda
+                            </a>
+                        <?php } ?>
 
                     </form>
+
+                    <?php if (count($neumaticos) === 0) { ?>
+
+                        <div class="panel-vacio">
+                            No se encontraron neumáticos que coincidan con "<?php echo htmlspecialchars($buscar); ?>".
+                        </div>
+
+                    <?php } else { ?>
+
+                        <form method="POST" class="formulario-stock">
+
+                            <input type="hidden" name="accion" value="agregar_linea">
+
+                            <div>
+                                <label>NEUMÁTICO</label>
+                                <select name="neumatico_id" required>
+                                    <?php foreach ($neumaticos as $n) { ?>
+                                        <option value="<?php echo $n["id"]; ?>">
+                                            <?php echo htmlspecialchars($n["marca"] . " " . $n["modelo"] . " (" . $n["medida"] . ")"); ?>
+                                        </option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label>CANTIDAD</label>
+                                <input type="number" name="cantidad" min="1" required>
+                            </div>
+
+                            <div>
+                                <label>PRECIO UNITARIO</label>
+                                <input type="number" name="precio_unitario" step="0.01" min="0" required>
+                            </div>
+
+                            <button type="submit">AGREGAR AL PRESUPUESTO</button>
+
+                        </form>
+
+                    <?php } ?>
 
                 </div>
 

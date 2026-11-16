@@ -126,11 +126,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["accion"]) && $_POST["a
 
             $venta_id = $pdo->lastInsertId();
 
-                        $stmtDetalle = $pdo->prepare(
+            $stmtDetalle = $pdo->prepare(
                 "INSERT INTO detalle_venta (venta_id, neumatico_id, cantidad, precio_unitario, costo_unitario, subtotal)
                  VALUES (:venta_id, :neumatico_id, :cantidad, :precio_unitario, :costo_unitario, :subtotal)"
             );
-           
 
             foreach ($_SESSION["carrito_venta"] as $linea) {
 
@@ -163,7 +162,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["accion"]) && $_POST["a
 
 // Datos para los selects
 $clientes = $pdo->query("SELECT * FROM clientes ORDER BY apellido, nombre")->fetchAll();
-$neumaticos = $pdo->query("SELECT * FROM neumaticos WHERE stock_actual > 0 ORDER BY marca, modelo")->fetchAll();
+
+$buscar = trim($_GET["buscar"] ?? "");
+
+if ($buscar != "") {
+    $stmtNeu = $pdo->prepare(
+        "SELECT * FROM neumaticos 
+         WHERE stock_actual > 0 
+           AND (marca LIKE :buscar OR modelo LIKE :buscar OR medida LIKE :buscar)
+         ORDER BY marca, modelo"
+    );
+    $stmtNeu->execute(["buscar" => "%$buscar%"]);
+    $neumaticos = $stmtNeu->fetchAll();
+} else {
+    $neumaticos = $pdo->query("SELECT * FROM neumaticos WHERE stock_actual > 0 ORDER BY marca, modelo")->fetchAll();
+}
 
 $carrito = $_SESSION["carrito_venta"];
 $total_carrito = array_sum(array_column($carrito, "subtotal"));
@@ -232,7 +245,7 @@ $historial_ventas = $pdo->query(
             <?php } ?>
 
 
-            <?php if (count($neumaticos) === 0) { ?>
+            <?php if (count($neumaticos) === 0 && $buscar === "") { ?>
 
                 <div class="tarjeta">
                     <div class="panel-vacio">
@@ -249,51 +262,81 @@ $historial_ventas = $pdo->query(
                         AGREGAR NEUMÁTICO A LA VENTA
                     </div>
 
-                    <form method="POST" class="formulario-stock" id="form-agregar-venta">
-
-                        <input type="hidden" name="accion" value="agregar_linea">
-
-                        <div>
-                            <label>NEUMÁTICO</label>
-                            <select name="neumatico_id" id="select-neumatico" required>
-                                <?php foreach ($neumaticos as $n) { ?>
-                                    <option value="<?php echo $n["id"]; ?>" data-precio="<?php echo $n["precio_venta"]; ?>">
-                                        <?php echo htmlspecialchars($n["marca"] . " " . $n["modelo"] . " (" . $n["medida"] . ") — " . $n["stock_actual"] . " u."); ?>
-                                    </option>
-                                <?php } ?>
-                            </select>
-                        </div>
+                    <!-- BUSCADOR DE NEUMÁTICOS -->
+                    <form method="GET" class="formulario-stock" style="margin-bottom: 18px;">
 
                         <div>
-                            <label>CANTIDAD</label>
-                            <input type="number" name="cantidad" min="1" required>
+                            <label>BUSCAR NEUMÁTICO</label>
+                            <input type="text" name="buscar" placeholder="Marca, modelo o medida..." value="<?php echo htmlspecialchars($buscar); ?>">
                         </div>
 
-                        <div>
-                            <label>PRECIO UNITARIO (VENTA)</label>
-                            <input type="number" name="precio_unitario" id="input-precio-unitario" step="0.01" min="0" required>
-                        </div>
+                        <button type="submit">BUSCAR</button>
 
-                        <button type="submit">AGREGAR A LA VENTA</button>
+                        <?php if ($buscar != "") { ?>
+                            <a href="ventas.php" class="accion-eliminar" style="align-self: end; padding-bottom: 10px;">
+                                Limpiar búsqueda
+                            </a>
+                        <?php } ?>
 
                     </form>
 
-                    <script>
-                        // Completa el precio automáticamente con el precio de venta cargado en Stock.
-                        // Se puede seguir editando a mano si hace falta un precio distinto para esta venta puntual.
-                        (function () {
-                            var select = document.getElementById("select-neumatico");
-                            var inputPrecio = document.getElementById("input-precio-unitario");
+                    <?php if (count($neumaticos) === 0) { ?>
 
-                            function completarPrecio() {
-                                var opcion = select.options[select.selectedIndex];
-                                inputPrecio.value = opcion.getAttribute("data-precio");
-                            }
+                        <div class="panel-vacio">
+                            No se encontraron neumáticos con stock que coincidan con "<?php echo htmlspecialchars($buscar); ?>".
+                        </div>
 
-                            select.addEventListener("change", completarPrecio);
-                            completarPrecio();
-                        })();
-                    </script>
+                    <?php } else { ?>
+
+                        <form method="POST" class="formulario-stock" id="form-agregar-venta">
+
+                            <input type="hidden" name="accion" value="agregar_linea">
+
+                            <div>
+                                <label>NEUMÁTICO</label>
+                                <select name="neumatico_id" id="select-neumatico" required>
+                                    <?php foreach ($neumaticos as $n) { ?>
+                                        <option value="<?php echo $n["id"]; ?>" data-precio="<?php echo $n["precio_venta"]; ?>">
+                                            <?php echo htmlspecialchars($n["marca"] . " " . $n["modelo"] . " (" . $n["medida"] . ") — " . $n["stock_actual"] . " u."); ?>
+                                        </option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label>CANTIDAD</label>
+                                <input type="number" name="cantidad" min="1" required>
+                            </div>
+
+                            <div>
+                                <label>PRECIO UNITARIO (VENTA)</label>
+                                <input type="number" name="precio_unitario" id="input-precio-unitario" step="0.01" min="0" required>
+                            </div>
+
+                            <button type="submit">AGREGAR A LA VENTA</button>
+
+                        </form>
+
+                        <script>
+                            // Completa el precio automáticamente con el precio de venta cargado en Stock.
+                            // Se puede seguir editando a mano si hace falta un precio distinto para esta venta puntual.
+                            (function () {
+                                var select = document.getElementById("select-neumatico");
+                                var inputPrecio = document.getElementById("input-precio-unitario");
+
+                                function completarPrecio() {
+                                    if (select.options.length > 0) {
+                                        var opcion = select.options[select.selectedIndex];
+                                        inputPrecio.value = opcion.getAttribute("data-precio");
+                                    }
+                                }
+
+                                select.addEventListener("change", completarPrecio);
+                                completarPrecio();
+                            })();
+                        </script>
+
+                    <?php } ?>
 
                 </div>
 
